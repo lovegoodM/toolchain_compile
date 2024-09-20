@@ -1,0 +1,102 @@
+name: Build_toolchain
+
+on: 
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        required: true
+        default: '1.26.0'
+      linux_kernel_version:
+        required: true
+        default: '5.4.240'
+      config_file:
+        required: true
+        default: 'arm-uk-linux-musleabi-gcc12.3-nohard'
+
+# 定时触发编译
+#  schedule:
+#    - cron: 5 23 * * 4
+
+# 点赞☆Star触发编译
+#  watch:
+#    types: [started]
+
+env:
+  REPO_URL: https://github.com/crosstool-ng/crosstool-ng
+  KERNEL_URL: https://mirrors.edge.kernel.org
+  SSH_ACTIONS: false
+  UPLOAD_RELEASE: true
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: false
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    if: github.event.repository.owner.id == github.event.sender.id
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+
+    - name: Initialization environment
+      run: |
+        sudo timedatectl set-timezone "$TZ"
+        sudo -E swapoff -a
+        sudo -E rm -f /swapfile
+        sudo -E docker image prune -a -f
+        sudo -E snap set system refresh.retain=2
+        sudo -E apt-get -y purge dotnet* firefox ghc* google* hhvm llvm* mono* mysql* openjdk* php* zulu*
+        sudo -E apt-get -y autoremove --purge
+        sudo -E rm -rf /usr/share/dotnet /usr/local/lib/android/sdk /etc/mysql /etc/php /usr/local/share/boost
+        [ -n "$AGENT_TOOLSDIRECTORY" ] && sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        sudo -E apt-get update -y
+        sudo -E apt-get install -y \
+        unzip libtool-bin curl cmake gperf gawk flex bison nano xxd xz-utils \
+        fakeroot kmod cpio git python3-docutils gettext automake autopoint \
+        texinfo build-essential help2man pkg-config zlib1g-dev libgmp3-dev \
+        libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev wget libc-dev-bin
+        sudo -E apt-get clean
+        pip install aligo
+        git config --global user.name 'GitHub Actions' && git config --global user.email 'noreply@github.com'
+        df -h
+        
+    - name: Clone source code
+      run: |
+        fileURL=$(REPO_URL)"/releases/download/""crosstool-ng-${{ github.event.inputs.release_version }}/crosstool-ng-${{ github.event.inputs.release_version }}.tar.xz"
+        curl -fSsLo- "$fileURL" | tar Jx
+
+        crossDir="crosstool-ng-${{ github.event.inputs.release_version }}"
+        cd crossDir
+        lkVersionP=$(echo ${{ github.event.inputs.linux_kernel_version }} | cut -d '.' -f 1)
+        lkFileName=linux-${{ github.event.inputs.linux_kernel_version }}.tar.xz
+        wget $(KERNEL_URL)/pub/linux/kernel/v$lkVersionP.x/$lkFileName
+        tar Jx $lkFileName -C .
+        rm $lkFileName
+        mv linux-${{ github.event.inputs.linux_kernel_version }} linux-kernel
+
+    - name: Build toolchain
+      run: |
+        crossDir="crosstool-ng-${{ github.event.inputs.release_version }}"
+        cp ${{ github.event.inputs.config_file }}.config crossDir/defconfig
+        cd crossDir
+        ./bootstrap
+        ./configure --enable-local
+        make
+        ./ct-ng defconfig
+        ./ct-ng build.4
+        
+    - name: Assemble Artifact
+      run: |
+        crossDir="crosstool-ng-${{ github.event.inputs.release_version }}"
+        cd crossDir
+        tar czf ${{ github.event.inputs.config_file }}.tar ${{ github.event.inputs.config_file }}
+        xz -z --lzma2=dict=64MiB ${{ github.event.inputs.config_file }}.tar
+        mkdir ../toolchain
+        mv ${{ github.event.inputs.config_file }}.tar.xz ../toolchain
+        
+    - name: Upload Firmwares
+      uses: actions/upload-artifact@main
+      with:
+        name: toolchain.tar.xz
+        path: toolchain/*
