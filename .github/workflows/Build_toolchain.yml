@@ -94,7 +94,7 @@ jobs:
     - name: Assemble Artifact
       working-directory: ./${{ env.CROSS_DIR }}
       run: |
-        tar czf ${{ github.event.inputs.config_file }}.tar ${{ github.event.inputs.config_file }}
+        tar cf ${{ github.event.inputs.config_file }}.tar ${{ github.event.inputs.config_file }}
         xz -z --lzma2=dict=64MiB ${{ github.event.inputs.config_file }}.tar
         
         mkdir upDir
