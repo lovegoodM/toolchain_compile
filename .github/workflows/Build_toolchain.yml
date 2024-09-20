@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
+        description: 'crosstool-ng release version'
         required: true
         default: '1.26.0'
       linux_kernel_version:
@@ -25,10 +26,6 @@ on:
 env:
   REPO_URL: https://github.com/crosstool-ng/crosstool-ng
   KERNEL_URL: https://mirrors.edge.kernel.org
-  SSH_ACTIONS: false
-  UPLOAD_RELEASE: true
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: false
   TZ: Asia/Shanghai
 
 jobs:
@@ -58,28 +55,36 @@ jobs:
         libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev wget libc-dev-bin
         sudo -E apt-get clean
         pip install aligo
+        
         git config --global user.name 'GitHub Actions' && git config --global user.email 'noreply@github.com'
+        cDir=crosstool-ng-${{ github.event.inputs.release_version }}
+        echo "CROSS_DIR=$cDir" >> $GITHUB_ENV
+        
+    - name: Do something
+      run: |
+        pwd
         df -h
+        free -h
         
     - name: Clone source code
+      shell: bash
       run: |
-        fileURL=$(REPO_URL)"/releases/download/""crosstool-ng-${{ github.event.inputs.release_version }}/crosstool-ng-${{ github.event.inputs.release_version }}.tar.xz"
-        curl -fSsLo- "$fileURL" | tar Jx
+        fv=$CROSS_DIR
+        fURL="$REPO_URL"/releases/download/$fv/$fv.tar.xz
+        curl -fSsLo- "$fURL" | tar Jx
 
-        crossDir="crosstool-ng-${{ github.event.inputs.release_version }}"
-        cd crossDir
-        lkVersionP=$(echo ${{ github.event.inputs.linux_kernel_version }} | cut -d '.' -f 1)
-        lkFileName=linux-${{ github.event.inputs.linux_kernel_version }}.tar.xz
-        wget $(KERNEL_URL)/pub/linux/kernel/v$lkVersionP.x/$lkFileName
-        tar Jx $lkFileName -C .
-        rm $lkFileName
-        mv linux-${{ github.event.inputs.linux_kernel_version }} linux-kernel
+        cd $CROSS_DIR
+        
+        lkvp=$(echo ${{ github.event.inputs.linux_kernel_version }} | cut -d '.' -f 1)
+        lkfn=linux-${{ github.event.inputs.linux_kernel_version }}.tar.xz
+        fURL="$KERNEL_URL"/pub/linux/kernel/v$lkvp.x/$lkfn
+        curl -fSsLo- "$fURL" | tar Jx
+        mv ${lkfn%.tar.xz} linux-kernel
 
     - name: Build toolchain
       run: |
-        crossDir="crosstool-ng-${{ github.event.inputs.release_version }}"
-        cp ${{ github.event.inputs.config_file }}.config crossDir/defconfig
-        cd crossDir
+        cp ${{ github.event.inputs.config_file }}.config $CROSS_DIR/defconfig
+        cd $CROSS_DIR
         ./bootstrap
         ./configure --enable-local
         make
@@ -87,16 +92,16 @@ jobs:
         ./ct-ng build.4
         
     - name: Assemble Artifact
+      working-directory: ./${{ env.CROSS_DIR }}
       run: |
-        crossDir="crosstool-ng-${{ github.event.inputs.release_version }}"
-        cd crossDir
         tar czf ${{ github.event.inputs.config_file }}.tar ${{ github.event.inputs.config_file }}
         xz -z --lzma2=dict=64MiB ${{ github.event.inputs.config_file }}.tar
-        mkdir ../toolchain
-        mv ${{ github.event.inputs.config_file }}.tar.xz ../toolchain
         
-    - name: Upload Firmwares
+        mkdir upDir
+        mv ${{ github.event.inputs.config_file }}.tar.xz upDir
+        
+    - name: Upload toolchain
       uses: actions/upload-artifact@main
       with:
-        name: toolchain.tar.xz
-        path: toolchain/*
+        name: toolchain
+        path: ${{ env.CROSS_DIR }}/upDir/*
