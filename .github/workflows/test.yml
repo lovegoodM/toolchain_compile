@@ -18,4 +18,6 @@ jobs:
 
     - name: Test
       shell: bash
-      run: ./test.sh
+      run: |
+        chmod +x ./test.sh
+        ./test.sh
