@@ -36,20 +36,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Test
-      shell: bash
-      run: |
-        echo 'export | grep -i UTF\-8':
-        export | grep -i UTF\-8
-        echo 'cat /etc/environment':
-        cat /etc/environment
-        echo 'localectl status':
-        localectl status
-        echo '/etc/default/locale':
-        cat /etc/default/locale
-        echo 'exit 1'
-        exit 1
-        
     - name: Initialization environment
       run: |
         sudo timedatectl set-timezone "$TZ"
@@ -112,9 +98,19 @@ jobs:
         
         mkdir upDir
         mv ${{ github.event.inputs.config_file }}.tar.xz upDir
+
+        echo "RELEASE_NAME=${{ github.event.inputs.config_file }}" >> $GITHUB_ENV
         
     - name: Upload toolchain
       uses: actions/upload-artifact@main
       with:
         name: toolchain
         path: ${{ env.CROSS_DIR }}/upDir/*
+
+    - name: Create Release & Upload
+      uses: ncipollo/release-action@main
+      with:
+        artifacts: ${{ env.CROSS_DIR }}/upDir/*
+        name: ${{ env.RELEASE_NAME }}
+        tag: ${{ env.RELEASE_NAME }}
+        token: ${{ secrets.GITHUB_TOKEN }}
