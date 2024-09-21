@@ -114,3 +114,4 @@ jobs:
         name: ${{ env.RELEASE_NAME }}
         tag: ${{ env.RELEASE_NAME }}
         token: ${{ secrets.GITHUB_TOKEN }}
+        allowUpdates: true
